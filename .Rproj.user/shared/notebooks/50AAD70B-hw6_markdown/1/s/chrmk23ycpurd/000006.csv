@@ -1,0 +1,6 @@
+"0","ma_spectrum <- abs(fft(y_ma)^2)/1000"
+"0","ma_periodogram <- data.frame(x=ar_f,y=ma_spectrum)"
+"0","ggplot(ma_periodogram,aes(ar_f,ma_spectrum))+"
+"0","  geom_line()+"
+"0","  labs(title=""MA(1) Periodogram"",x=""Frequency"",y=""Power"")+"
+"0","  theme_bw()"

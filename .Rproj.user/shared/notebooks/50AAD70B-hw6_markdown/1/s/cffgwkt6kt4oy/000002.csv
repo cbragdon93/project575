@@ -1,0 +1,4 @@
+"0","set.seed(12)"
+"0","y <- rep(0,1000)"
+"0","e <- rnorm(1000)"
+"0","dirpath<-""~/Documents/Fall2019/MA681/hw/6/"""

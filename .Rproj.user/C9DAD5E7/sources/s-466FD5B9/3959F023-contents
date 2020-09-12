@@ -1,0 +1,315 @@
+---
+title: "MA681 HW6"
+author: "Callen Bragdon"
+date: "11/26/2019"
+output: pdf_document
+---
+
+Worked with Conor Shea
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(multcomp)
+library(tidyverse)
+library(broom)
+library(tidyverse)
+library(gridExtra)
+library(fable)
+library(forecast)
+knitr::opts_chunk$set(
+    echo = TRUE, 
+    comment=NA,
+    tidy.opts=list(width.cutoff=60),
+    tidy=TRUE
+  )
+```
+
+# Problem 1
+
+## A
+
+```{r}
+set.seed(12)
+y <- rep(0,1000)
+e <- rnorm(1000)
+dirpath<-"~/Documents/Fall2019/MA681/hw/6/"
+```
+
+```{r}
+y[1] <- e[1]
+
+for(i in 2:1000) {
+  y[i] <- -0.9* y[i-1] + e[i]
+}
+
+y_1 <- data.frame(x=y[1:999],y=y[2:1000])
+y_2 <- data.frame(x=y[1:998],y=y[3:1000])
+
+
+lag1<-ggplot(y_1,aes(x=x,y=y))+
+  geom_point()+
+  labs(title=expression(paste("Plot of ",y[t], "vs.",y[t-1])),x=expression(y[t-1]),y=expression(y[t]))+
+  theme_bw()
+
+lag2<-ggplot(y_2,aes(x=x,y=y))+
+  geom_point()+
+  labs(title=expression(paste("Plot of ",y[t], "vs.",y[t-2])),x=expression(y[t-2]),y=expression(y[t]))+
+  theme_bw()
+
+grid.arrange(lag1,lag2,nrow=2)
+
+```
+
+
+For the lag 1 plot, we observe a strong negative correlation, while we see a strong positive correlation with the lag 2 plot. More notably, there appears to be a stronger correlation within lag 1 than lag 2, since the residuals appear small.
+
+
+
+```{r}
+ar_acf <- acf(y,plot=T)
+ar_pacf <- pacf(y,plot=T)
+ar_spectrum <- abs(fft(y)^2)/1000
+ar_f <- seq(1,1000)/1000
+ar_periodogram <- data.frame(x=ar_f,y=ar_spectrum)
+
+ggplot(ar_periodogram,aes(ar_f,ar_spectrum))+
+  geom_line()+
+  labs(title="AR(1) Periodogram",x="Frequency",y="Power")+
+  theme_bw()
+
+# glm(y_1$y~y_1$x)$coef
+# glm(y_2$y~y_2$x)$coef
+```
+
+Looking at the (p)ACF plots, I would say an AR model of first order would sufficiently capture these data. The pACF drops off immediately after lag 1, while the ACF plot converges much more slowly. 
+
+Looking at the periodogram, there appears to be a dominant frequency of 0.5 $t^{-1}$.
+
+
+```{r}
+ariba <- arima(y,order=c(1,0,0))
+
+ariba$coef
+
+ariba$var.coef
+
+
+ariba.conf.df<-data.frame(
+  a=ariba$coef[[1]]-1.96*sqrt(ariba$var.coef[1,1]),
+  b=ariba$coef[[1]]+1.96*sqrt(ariba$var.coef[1,1])
+)
+
+colnames(ariba.conf.df)<-c("2.5%","97.5%")
+knitr::kable(ariba.conf.df)
+```
+
+Yes, our confidence interval calculated above contains $-0.9$
+
+## B
+
+```{r}
+set.seed(4)
+y_ma <- rep(0,1000)
+e_ma <- rnorm(1000)
+```
+
+```{r}
+y_ma[1] <- e_ma[1]
+for(i in 2:1000) {
+  y_ma[i] <- 0.9* e_ma[i-1] + e_ma[i]
+}
+
+y_ma_1 <- data.frame(x=y_ma[1:999],y=y_ma[2:1000])
+y_ma_2 <- data.frame(x=y_ma[1:998],y=y_ma[3:1000])
+
+yma1_plot<-ggplot(y_ma_1,aes(x=x,y=y))+
+  geom_point()+
+  labs(title="Plot of y_t vs. y_t-1",x="y_t-1",y="y_t")+
+  theme_bw()
+
+yma2_plot<-ggplot(y_ma_2,aes(x=x,y=y))+
+  geom_point()+
+  labs(title="Plot of y_t vs. y_t-2",x="y_t-2",y="y_t")+
+  theme_bw()
+
+grid.arrange(yma1_plot,yma2_plot,nrow=2)
+```
+
+Looking into these lag plots, there appears to be a modest positive correlation for lag 1, but little correlation , if any, for lag 2.
+
+```{r}
+ma_acf <- acf(y_ma,plot=T)
+ma_pacf <- pacf(y_ma,plot=T)
+ma_spectrum <- abs(fft(y_ma)^2)/1000
+ma_periodogram <- data.frame(x=ar_f,y=ma_spectrum)
+ggplot(ma_periodogram,aes(ar_f,ma_spectrum))+
+  geom_line()+
+  labs(title="MA(1) Periodogram",x="Frequency",y="Power")+
+  theme_bw()
+```
+
+Looking at the (p)ACF plots, I would say an MA model of first order would sufficiently capture these data. The ACF drops off immediately after lag 1, while the pACF plot converges much more slowly. 
+
+Looking at the periodogram, there does not appear to be a dominant frequency for these data. 
+
+```{r}
+abajo <- arima(y_ma,order=c(0,0,1))
+abajo$coef
+abajo$var.coef
+abajo.conf.df<-data.frame(
+  "L"=abajo$coef[[1]]-1.96*sqrt(abajo$var.coef[1,1]),
+  "H"=abajo$coef[[1]]+1.96*sqrt(abajo$var.coef[1,1])
+)
+colnames(abajo.conf.df)<-c("2.5%","97.5%")
+knitr::kable(abajo.conf.df)
+```
+
+Yes, our confidence interval calculated above does contain $0.9$
+
+
+# Problem 2
+
+## A
+
+```{r}
+eeg <- read.csv(paste(dirpath,"/EEG.csv",sep=""), header=T)
+```
+
+```{r}
+ggplot(eeg,aes(x=t,y=EEG))+
+  geom_line()+
+  labs(title="EEG vs. Time",x="Time (s)",y="Voltage (uV)")+
+  theme_bw()
+```
+
+Looking at the data above, I see a RICH sinusoidal structure contained, possibly containing "high" frequencies.
+
+```{r}
+eeg_acf <- acf(eeg$EEG)
+eeg_spectrum <- abs(fft(eeg$EEG)^2)/2
+eeg_f <- seq(1,2000)/2
+eeg_periodogram <- data.frame(x=eeg_f,y=eeg_spectrum)
+ggplot(eeg_periodogram,aes(x=x,y=y))+
+  geom_line()+
+  labs(title = "EEG Periodogram", x="Frequency",y="Power")+
+  theme_bw()
+
+```
+
+The ACF plot oscillates in and out of our correlation band. The peaks for positive correlation appear every 16 time points(starting at 0), and the peaks for anticorrelation appear every 16 time steps(starting at 8). This structure makes sense when we consider the next parts, where the signal's frequency is given. 
+
+
+## B
+
+```{r}
+eeg$sin_60 <- sin(2*pi*60*eeg$t)
+eeg$cos_60 <- cos(2*pi*60*eeg$t)
+
+m <- glm(eeg$EEG ~ eeg$sin_60 + eeg$cos_60)
+summary(m)
+eeg$residuals <- m$residuals
+R2 <- 1-sum(m$residuals^2)/sum((eeg$EEG-mean(eeg$EEG))^2)
+R2
+```
+
+With the strong R-squared value calculated above, we can safely conclude that this model almost completely explains the variability in the EEG signal. Subjectively speaking, this conclusion makes sense, since the time series plot in part A appears to have a regular cyclic behaviour. 
+
+## C
+
+```{r}
+resid_eeg<-ggplot(eeg,aes(x=t,y=residuals))+
+  geom_line()+
+  labs(title="EEG Residuals vs. Time",x="Time (s)",y="Voltage (uV)")+
+  theme_bw()
+
+
+eeg_r_spectrum <- abs(fft(eeg$residuals)^2)/2000
+eeg_r_periodogram.df <- data.frame(x=eeg_f,y=eeg_r_spectrum)
+eeg_r_periodogram.df.zoomed <- data.frame(x=eeg_f[1:100],y=eeg_r_spectrum[1:100])
+
+pgram_eeg<-ggplot(eeg_r_periodogram.df,aes(x=x,y=y))+
+  geom_line()+
+  labs(title = "EEG Residuals Periodogram", x="Frequency",y="Power")+
+  theme_bw()
+
+pgram_eeg_zoomed<-ggplot(eeg_r_periodogram.df.zoomed,aes(x=x,y=y))+
+  geom_line()+
+  labs(title = "EEG Residuals Periodogram, up to 50", x="Frequency",y="Power")+
+  theme_bw()
+
+grid.arrange(resid_eeg,pgram_eeg,pgram_eeg_zoomed,nrow=3)
+```
+
+We can see in the residual plot(top) that there appears to be a consistent cyclical structure, at least up to the first second. After the first second, the cyclic behavior becomes less consistent, perhaps a mixture of other sinusoids. The periodogram confirms our intuition, as we see two peaks at different frequencies. The last plot is meant to compensate for the resolution of the middle plot.
+
+
+
+## D
+
+```{r}
+#get residuals partitioned into 2 objects
+residual_part1<-(eeg$residuals)[1:1000]
+residual_part2<-(eeg$residuals)[1001:2000]
+
+pres_1<-periodogram(residual_part1,plot=F)
+pres_1_pgram.df<-data.frame(
+  x=pres_1$freq[1:100]*1000,
+  y=pres_1$spec[1:100]
+)
+pres_1_pgram.plot<-ggplot(pres_1_pgram.df,aes(x=x,y=y))+
+  geom_line()+
+  labs(title = "EEG Residuals Periodogram, First Half", x="Frequency[Hz]",y="Power")+
+  theme_bw()
+
+pres_2<-periodogram(residual_part2,plot=F)
+pres_2_pgram.df<-data.frame(
+  x=pres_2$freq[1:100]*1000,
+  y=pres_2$spec[1:100]
+)
+pres_2_pgram.plot<-ggplot(pres_2_pgram.df,aes(x=x,y=y))+
+  geom_line()+
+  labs(title = "EEG Residuals Periodogram, Second Half", x="Frequency[Hz]",y="Power")+
+  theme_bw()
+
+grid.arrange(pres_1_pgram.plot,pres_2_pgram.plot,nrow=2)
+```
+
+
+
+```{r}
+#get the dominant frequency in each partition
+#looking at the periodograms above
+f1<-pres_1$freq[which(pres_1$spec==max(pres_1$spec))]*1000
+f2<-pres_2$freq[which(pres_2$spec==max(pres_2$spec))]*1000
+
+
+curvy_boi.df<-data.frame(
+  res1=residual_part1,
+  res2=residual_part2,
+  cos_comp1=cos(2*pi*f1*eeg$t[1:1000]),
+  sin_comp1=sin(2*pi*f1*eeg$t[1:1000]),
+  cos_comp2=cos(2*pi*f2*eeg$t[1001:2000]),
+  sin_comp2=sin(2*pi*f2*eeg$t[1001:2000])
+)
+```
+
+For our harmonic model, I am simply modeling each half of the residuals as a sum of a sine and cosine wave of the frequency yielding the maximum POWER in our periodogram of each half. For hypothesis testing, I will try to model each half of the residuals as a function of cos(frequency_firsthalf)+sin(frequency_firsthalf). Then, I will investigate the significance of the coefficients provided from the model. If one model object yields significant coefficients, but the other does not, then we can conclude that the rhythmic content changes between the two halves.
+
+```{r}
+##fitting sinusoidal sum of max frequency of first half of residuals
+##to the first half of residuals
+curvy_boi1.model <- lm(res1 ~ cos_comp1+sin_comp1, data=curvy_boi.df)
+summary(curvy_boi1.model)
+```
+
+As anticipated, the first half of the residuals is captured well by the coefficients estimated from its corresponding lm
+
+```{r}
+##trying to fit same model to second half of residuals
+curvy_boi2.model <- lm(res2 ~ cos_comp1+sin_comp1, data=curvy_boi.df)
+summary(curvy_boi2.model)
+
+```
+
+Now, since there is no significance in the second half of the residuals as a function of the same model, we can conclude a shift in rhytmic content between the two halves.

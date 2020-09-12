@@ -1,0 +1,8 @@
+"0","ar_spectrum <- abs(fft(y)^2)/1000"
+"0","ar_f <- seq(1,1000)/1000"
+"0","ar_periodogram <- data.frame(x=ar_f,y=ar_spectrum)"
+"0",""
+"0","ggplot(ar_periodogram,aes(ar_f,ar_spectrum))+"
+"0","  geom_line()+"
+"0","  labs(title=""AR(1) Periodogram"",x=""Frequency"",y=""Power"")+"
+"0","  theme_bw()"

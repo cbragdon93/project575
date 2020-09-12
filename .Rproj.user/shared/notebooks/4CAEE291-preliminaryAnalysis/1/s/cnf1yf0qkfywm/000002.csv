@@ -1,0 +1,3 @@
+"0","# Read in files"
+"0","bikeByDay <- read.csv(""./data/bike/day.csv"")"
+"0","bikeByDayAndHour <- read.csv(""./data/bike/hour.csv"")"
