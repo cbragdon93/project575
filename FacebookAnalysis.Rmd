@@ -1,0 +1,103 @@
+---
+title: "Facebook_Analysis"
+author: "Team3"
+date: "9/25/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(ggplot2)
+library(multcomp)
+library(tidyverse)
+library(broom)
+library(tidyverse)
+library(gridExtra)
+library(chron)
+library(kableExtra)
+library(stringr)
+# The package I normally use for time series, TSA, got discontinued
+# from the CRAN repo. Rather than dealing with archives
+# and possible versioning issues, I'm currently using a set of libraries that
+# do the same thing
+library(fable)
+library(forecast)
+```
+
+
+## Facebook
+
+```{r}
+facebook<-read.csv("data/facebook/dataset_Facebook.csv", sep=";")
+```
+
+### By hour of each day, simple OLM
+```{r}
+# ggplot doesn't like having the periods in the x,y aesthetic
+# I think ggplot tries to find an object Post.Hour...
+colnames(facebook)[which(colnames(facebook)=="Post.Hour")]<-"PostHour"
+colnames(facebook)[which(colnames(facebook)=="Post.Weekday")]<-"PostWeekday"
+lapply(unique(facebook$PostWeekday), function(x){
+  # building simple linear models with R.
+  # Something we could ask of the facebook data could be
+  # "When is the best day to post? Best Hour? Best Day and hour?"
+  subsetData = facebook[which(facebook$PostWeekday==x),]
+  theseLikes = subsetData$like
+  isPaid = subsetData$Paid
+  theseHours = subsetData$PostHour
+  # extracting slopes, intercepts of model
+  # both for paid and unpaid. the result will be marked if significant
+  m1 = lm(theseLikes ~ as.factor(isPaid) + theseHours, data=subsetData)
+  print(summary(m1))
+  thisIntercept = m1$coefficients[[1]]
+  paidCoef = m1$coefficients[[2]]
+  h = m1$coefficients[[3]]
+  ggplot(subsetData, aes(x=PostHour, y=like, col=Paid)) +
+  geom_point() +
+  # fit the model
+  geom_abline(slope = h, intercept=(thisIntercept+paidCoef), color="blue") +
+    geom_abline(slope=h, intercept=thisIntercept, color="black") +
+  theme_bw() +
+  theme(axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
+  labs(title=paste0("Facebook Like Activity: PostDay #: ",x), 
+       x="post hour", y="likes", col="paid?")
+})
+```
+
+
+### uhhhhhh
+
+```{r}
+print(names(facebook))
+```
+
+
+
+```{r}
+names(facebook)<-gsub("\\.","",names(facebook))
+ggplot(facebook, aes(x=LifetimePeoplewhohavelikedyourPageandengagedwithyourpost,y=Pagetotallikes)) +
+  geom_point(size=2) +
+  labs(title="UHHHH",xlab="something",ylab="AHHHHHHH") +
+  theme_bw()
+```
+
+
+### uuuuuhhhhhhhhhHHHHHHHHHH
+
+```{r}
+olsFacebook <- lm(Pagetotallikes ~ LifetimePeoplewhohavelikedyourPageandengagedwithyourpost,data=facebook)
+print(summary(olsFacebook))
+```
+
+
+
+```{r}
+
+```
+
+
+

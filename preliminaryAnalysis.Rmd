@@ -149,7 +149,7 @@ lapply(unique(facebook$PostWeekday), function(x){
   geom_point() +
   # fit the model
   geom_abline(slope = h, intercept=(thisIntercept+paidCoef), color="blue") +
-    geom_abline(slope=h, intercept=thisIntercept, color="black")+
+    geom_abline(slope=h, intercept=thisIntercept, color="black") +
   theme_bw() +
   theme(axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
   labs(title=paste0("Facebook Like Activity: PostDay #: ",x), 
