@@ -35,6 +35,70 @@ library(forecast)
 facebook<-read.csv("data/facebook/dataset_Facebook.csv", sep=";")
 ```
 
+## For report 3
+
+
+```{r report_3_plotting}
+names(facebook)<-gsub("\\.","",names(facebook))
+
+monthSeven <- facebook[ which(facebook$PostMonth==7) , ]
+categorical <- c("Category", "Paid", "Type")
+notCategorical<-names(facebook)[which(!(names(facebook) %in% categorical))]
+
+
+ggplot() + 
+  geom_point(data=monthSeven, aes(x=PostWeekday, y=log(TotalInteractions)))  +
+  theme_bw()
+
+
+ggpairs(monthSeven[,which(startsWith(names(monthSeven),"Lifetime") | names(monthSeven)=="Pagetotallikes")], 
+        lower = list(continuous = wrap("points", alpha = 0.3,    size=0.1)))
+
+
+
+
+```
+
+
+
+```{r report_3_mls}
+# MLR
+monthSeven.mls.categorical <- lm( TotalInteractions ~ PostHour + as.factor(Paid) + as.factor(Category) + as.factor(Type), 
+                      data=monthSeven )
+
+
+monthSeven.mls.pageTotalLikes <- lm(Pagetotallikes ~ LifetimePostTotalReach + 
+                        LifetimePostTotalImpressions + LifetimeEngagedUsers + 
+                        LifetimePostConsumers + LifetimePostConsumptions + 
+                        LifetimePostImpressionsbypeoplewhohavelikedyourPage + 
+                        LifetimePostreachbypeoplewholikeyourPage + 
+                        LifetimePeoplewhohavelikedyourPageandengagedwithyourpost,
+  data=monthSeven)
+
+monthSeven.mls.notCategorical <- lm( TotalInteractions ~ PostHour + Pagetotallikes*LifetimeEngagedUsers)
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##
+
 ### By hour of each day, simple OLM
 ```{r}
 # ggplot doesn't like having the periods in the x,y aesthetic
