@@ -35,6 +35,35 @@ library(forecast)
 facebook<-read.csv("data/facebook/dataset_Facebook.csv", sep=";")
 ```
 
+
+```{r}
+plotResiduals <- function(mlsModel, data, A, B){
+  StanResMLS <- rstandard(mlsModel)
+  X=A
+  Y=B
+  dataMLS <- data.frame(X=data[[A]],Y=data[[B]])
+  resVSomething<-ggplot() + 
+    geom_point(data=dataMLS, aes(x=X, y=Y, color = "blue"), size = 1) +
+    geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') + labs(y = "Standarized Residual") + ggtitle("Standarized Residuals MLS Plot")
+  print(resVSomething)
+  
+  
+  Fitted = fitted(mlsModel)
+dataMLSFitted <- data.frame(Fitted,StanResMLS)
+
+# MLS Stan. Res. vs Fitted plot 
+mlsStanFit<-ggplot() +
+  geom_point(data=dataMLSFitted, aes(x=Fitted, y=StanResMLS, color = "MLS"), size = 1) +
+  geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') +
+  scale_color_manual(name = element_blank(), labels = c("MLS"), values = c("blue")) +
+  labs(y = "Standarized Residual") + labs(x = "Fitted value") + 
+  ggtitle("Standarized Residuals MLS Plot (Fitted) ")
+  print(mlsStanFit)
+  
+ }
+```
+
+
 ## For report 3
 
 
@@ -63,7 +92,8 @@ ggpairs(monthSeven[,which(startsWith(names(monthSeven),"Lifetime") | names(month
 
 ```{r report_3_mls}
 # MLR
-monthSeven.mls.categorical <- lm( TotalInteractions ~ PostHour + as.factor(Paid) + as.factor(Category) + as.factor(Type), 
+monthSeven.mls.categorical <- lm( TotalInteractions ~ PostHour + as.factor(Paid) + 
+                                    as.factor(Category) + as.factor(Type), 
                       data=monthSeven )
 
 
@@ -75,14 +105,22 @@ monthSeven.mls.pageTotalLikes <- lm(Pagetotallikes ~ LifetimePostTotalReach +
                         LifetimePeoplewhohavelikedyourPageandengagedwithyourpost,
   data=monthSeven)
 
-monthSeven.mls.notCategorical <- lm( TotalInteractions ~ PostHour + Pagetotallikes*LifetimeEngagedUsers)
+monthSeven.mls.notCategorical <- lm( TotalInteractions ~ PostHour*Paid + Pagetotallikes*LifetimeEngagedUsers, data=monthSeven)
 
+monthSeven.mls.notCategorical.2 <- lm( TotalInteractions ~ PostHour + LifetimeEngagedUsers, data=monthSeven)
 
+summary(monthSeven.mls.notCategorical.2)
 
 ```
 
 
-
+```{r}
+# Diagnostics -------------------------------------------------------------------------------------
+# Standard Residuals vs GroundCO
+## why are the horizontal lines for the residual plots where they are?
+## can we set our own threshold here?
+plotResiduals(monthSeven.mls.notCategorical.2, monthSeven, "PostHour", "TotalInteractions")
+```
 
 
 

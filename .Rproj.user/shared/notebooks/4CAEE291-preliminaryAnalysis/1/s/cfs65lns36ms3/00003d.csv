@@ -1,5 +1,0 @@
-"0","# just a time plot, regardless of other factors"
-"0","DayDate<-as.Date(bikeByDay$dteday)"
-"0","bikeByDayPlot<-ggplot(bikeByDay, aes(x=dteday, y=cnt)) +"
-"0","  geom_point() + theme_bw() + labs(title=""Total Rentals By Day"", y=""Total"", x=""Day"") + theme(axis.text.x=element_blank(), axis.ticks.x=element_blank())"
-"0","bikeByDayPlot"
