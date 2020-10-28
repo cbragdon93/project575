@@ -20,6 +20,7 @@ library(gridExtra)
 library(chron)
 library(kableExtra)
 library(stringr)
+library(GGally)
 # The package I normally use for time series, TSA, got discontinued
 # from the CRAN repo. Rather than dealing with archives
 # and possible versioning issues, I'm currently using a set of libraries that
@@ -67,75 +68,81 @@ mlsStanFit<-ggplot() +
 ## For report 3
 
 
+```{r}
+print(names(facebook))
+```
+
+
+
 ```{r report_3_plotting}
 names(facebook)<-gsub("\\.","",names(facebook))
 
 monthSeven <- facebook[ which(facebook$PostMonth==7) , ]
+
 categorical <- c("Category", "Paid", "Type")
 notCategorical<-names(facebook)[which(!(names(facebook) %in% categorical))]
+```
 
-
-ggplot() + 
-  geom_point(data=monthSeven, aes(x=PostWeekday, y=log(TotalInteractions)))  +
+```{r byCategory}
+print(
+  ggplot() + 
+  geom_point(data=facebook, 
+             aes(
+                 x=LifetimePostreachbypeoplewholikeyourPage, 
+                 y=LifetimePeoplewhohavelikedyourPageandengagedwithyourpost,
+                 color=as.factor(Category)))  +
   theme_bw()
+)
+```
 
 
-ggpairs(monthSeven[,which(startsWith(names(monthSeven),"Lifetime") | names(monthSeven)=="Pagetotallikes")], 
+
+```{r byType}
+print(
+  ggplot() + 
+  geom_point(data=facebook, 
+             aes(x=LifetimePostreachbypeoplewholikeyourPage, 
+                 y=LifetimePeoplewhohavelikedyourPageandengagedwithyourpost,
+                 color=as.factor(Type)))  +
+  theme_bw()
+)
+```
+
+
+```{r report_3_ggpairs}
+print(
+  ggpairs(facebook[,which(startsWith(names(monthSeven),"Lifetime") | names(monthSeven)=="Pagetotallikes" | names(monthSeven)=="PostMonth")], progress=F,
         lower = list(continuous = wrap("points", alpha = 0.3,    size=0.1)))
-
-
-
-
+)
 ```
 
 
 
 ```{r report_3_mls}
 # MLR
-monthSeven.mls.categorical <- lm( TotalInteractions ~ PostHour + as.factor(Paid) + 
-                                    as.factor(Category) + as.factor(Type), 
-                      data=monthSeven )
+our.mls <- lm( LifetimePostConsumptions ~ (PostMonth + LifetimeEngagedUsers + LifetimePostreachbypeoplewholikeyourPage),
+               data=facebook)
+summary(our.mls)
 
+# monthSeven.mls.pageTotalLikes <- lm(Pagetotallikes ~ LifetimePostTotalReach + 
+#                         LifetimePostTotalImpressions + LifetimeEngagedUsers + 
+#                         LifetimePostConsumers + LifetimePostConsumptions + 
+#                         LifetimePostImpressionsbypeoplewhohavelikedyourPage + 
+#                         LifetimePostreachbypeoplewholikeyourPage + 
+#                         LifetimePeoplewhohavelikedyourPageandengagedwithyourpost,
+#   data=monthSeven)
 
-monthSeven.mls.pageTotalLikes <- lm(Pagetotallikes ~ LifetimePostTotalReach + 
-                        LifetimePostTotalImpressions + LifetimeEngagedUsers + 
-                        LifetimePostConsumers + LifetimePostConsumptions + 
-                        LifetimePostImpressionsbypeoplewhohavelikedyourPage + 
-                        LifetimePostreachbypeoplewholikeyourPage + 
-                        LifetimePeoplewhohavelikedyourPageandengagedwithyourpost,
-  data=monthSeven)
-
-monthSeven.mls.notCategorical <- lm( TotalInteractions ~ PostHour*Paid + Pagetotallikes*LifetimeEngagedUsers, data=monthSeven)
-
-monthSeven.mls.notCategorical.2 <- lm( TotalInteractions ~ PostHour + LifetimeEngagedUsers, data=monthSeven)
-
-summary(monthSeven.mls.notCategorical.2)
 
 ```
 
 
 ```{r}
 # Diagnostics -------------------------------------------------------------------------------------
-# Standard Residuals vs GroundCO
 ## why are the horizontal lines for the residual plots where they are?
 ## can we set our own threshold here?
-plotResiduals(monthSeven.mls.notCategorical.2, monthSeven, "PostHour", "TotalInteractions")
+plotResiduals(our.mls, facebook, "PostHour", "TotalInteractions")
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-##
 
 ### By hour of each day, simple OLM
 ```{r}
