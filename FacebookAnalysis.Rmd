@@ -29,14 +29,7 @@ library(fable)
 library(forecast)
 ```
 
-
-## Facebook
-
-```{r}
-facebook<-read.csv("data/facebook/dataset_Facebook.csv", sep=";")
-```
-
-
+## Functions
 ```{r}
 plotResiduals <- function(mlsModel, data, A, B){
   StanResMLS <- rstandard(mlsModel)
@@ -49,7 +42,7 @@ plotResiduals <- function(mlsModel, data, A, B){
   print(resVSomething)
   
   
-  Fitted = fitted(mlsModel)
+Fitted = fitted(mlsModel)
 dataMLSFitted <- data.frame(Fitted,StanResMLS)
 
 # MLS Stan. Res. vs Fitted plot 
@@ -63,20 +56,62 @@ mlsStanFit<-ggplot() +
   
  }
 ```
-
-
-## For report 3
-
+s
+## Facebook Data Loading and Pre-Processing
 
 ```{r}
+facebook<-read.csv("data/facebook/dataset_Facebook.csv", sep=";")
+# Response variable will be Lifetime Post Consumers
+# input features are 
+#   category, page total likes,
+#   type, month, hour, weekday, paid. 
+###
+# remove the periods from names because ggplot will try to look for those
+# names as variables
+names(facebook)<-gsub("\\.","",names(facebook))
 print(names(facebook))
+Response <- c("LifetimePostConsumers")
+Features <- c("Category", "Pagetotallikes", "Type", "PostMonth", "PostHour", "PostWeekday", "Paid")
+facebookProcessed <- facebook[,c(Response, Features)]
+# if the paid value is na, just make it 0
+facebookProcessed$Paid[which(is.na(facebookProcessed$Paid))] <- 0
+```
+
+```{r}
+facebookPairs <- ggpairs(facebookProcessed, progress=F,
+        lower = list(continuous = wrap("points", alpha = 0.3,    size=0.1)))
+print(facebookPairs)
+```
+
+```{r}
+consumerModel <- lm(LifetimePostConsumers ~ (Pagetotallikes + sin(PostHour)) , 
+                    data=facebookProcessed)
+consumerModelSummary<-summary(consumerModel)
+print(consumerModelSummary)
 ```
 
 
 
-```{r report_3_plotting}
-names(facebook)<-gsub("\\.","",names(facebook))
+## For report 3
 
+```{r}
+p<-ggplot(facebook) + 
+  geom_point(data=facebook, aes(x=PostHour, y=like)) +
+  ggtitle("Likes V. Hour") +
+  xlab("Hour") +
+  ylab("# of Likes")
+
+likeModel <- lm(like ~ as.factor(Paid)*(sin(PostHour) + PostHour^2), data=facebook)
+s<-summary(likeModel)
+print(s)
+m=s$coefficients[1]
+predicted = predict(likeModel)
+p + 
+  geom_line(mapping = aes(x = facebook$PostHour, y = c(m,predicted,NA), color = "red"))
+  
+```
+
+```{r report_3_plotting}
 monthSeven <- facebook[ which(facebook$PostMonth==7) , ]
 
 categorical <- c("Category", "Paid", "Type")
@@ -121,7 +156,7 @@ print(
 ```{r report_3_mls}
 # MLR
 our.mls <- lm( LifetimePostConsumptions ~ (PostMonth + LifetimeEngagedUsers + LifetimePostreachbypeoplewholikeyourPage),
-               data=facebook)
+               data=facebook )
 summary(our.mls)
 
 # monthSeven.mls.pageTotalLikes <- lm(Pagetotallikes ~ LifetimePostTotalReach + 
@@ -142,6 +177,13 @@ summary(our.mls)
 ## can we set our own threshold here?
 plotResiduals(our.mls, facebook, "PostHour", "TotalInteractions")
 ```
+
+```{r}
+length(facebook$Pagetotallikes)
+```
+
+
+
 
 
 ### By hour of each day, simple OLM
@@ -175,37 +217,6 @@ lapply(unique(facebook$PostWeekday), function(x){
   labs(title=paste0("Facebook Like Activity: PostDay #: ",x), 
        x="post hour", y="likes", col="paid?")
 })
-```
-
-
-### uhhhhhh
-
-```{r}
-print(names(facebook))
-```
-
-
-
-```{r}
-names(facebook)<-gsub("\\.","",names(facebook))
-ggplot(facebook, aes(x=LifetimePeoplewhohavelikedyourPageandengagedwithyourpost,y=Pagetotallikes)) +
-  geom_point(size=2) +
-  labs(title="UHHHH",xlab="something",ylab="AHHHHHHH") +
-  theme_bw()
-```
-
-
-### uuuuuhhhhhhhhhHHHHHHHHHH
-
-```{r}
-olsFacebook <- lm(Pagetotallikes ~ LifetimePeoplewhohavelikedyourPageandengagedwithyourpost,data=facebook)
-print(summary(olsFacebook))
-```
-
-
-
-```{r}
-
 ```
 
 
