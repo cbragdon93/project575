@@ -56,7 +56,7 @@ mlsStanFit<-ggplot() +
   
  }
 ```
-s
+
 ## Facebook Data Loading and Pre-Processing
 
 ```{r}
@@ -78,18 +78,83 @@ facebookProcessed$Paid[which(is.na(facebookProcessed$Paid))] <- 0
 ```
 
 ```{r}
+# Randomize rows
+numFacebook = nrow(facebookProcessed)
+facebookProcessed = facebookProcessed[sample(numFacebook),]
+splitTraining = 0.5
+trainingRows = ceiling(0.5*numFacebook)
+splitValidation = 0.25
+validationRows = trainingRows + ceiling(0.25*numFacebook)
+splitTesting = 0.25
+assertthat::are_equal(splitTraining + splitValidation+ splitTesting,1)
+# Form Training, Validation and Testing sets
+facebookProcessedTraining = facebookProcessed[1:trainingRows,]; # 50% for the data
+facebookProcessedValidation = facebookProcessed[(trainingRows+1):validationRows,]; # 25% for the data
+facebookProcessedTesting = facebookProcessed[(validationRows+1):numFacebook,]; # 25% for the data
+
+```
+
+
+
+```{r}
 facebookPairs <- ggpairs(facebookProcessed, progress=F,
         lower = list(continuous = wrap("points", alpha = 0.3,    size=0.1)))
 print(facebookPairs)
 ```
 
 ```{r}
-consumerModel <- lm(LifetimePostConsumers ~ (Pagetotallikes + sin(PostHour)) , 
-                    data=facebookProcessed)
+consumerModel <- lm(log(LifetimePostConsumers) ~ (sin(PostMonth))*Type, 
+                    data=facebookProcessedTraining)
 consumerModelSummary<-summary(consumerModel)
 print(consumerModelSummary)
 ```
 
+## Validation
+
+```{r}
+# Validation --------------------------------------------------------------------------------------
+
+# Residuals for training data
+ResMLS <- resid(consumerModel)
+
+# Residuals for validation data
+output<-predict(consumerModel, se.fit = TRUE, newdata=facebookProcessedValidation)
+ResMLSValidation <- log(facebookProcessedValidation$LifetimePostConsumers) - output$fit
+```
+
+```{r}
+# Mean Square Error for training data
+mean((ResMLS)^2)
+```
+
+```{r}
+# Mean Square Error for validation data
+mean((ResMLSValidation)^2)
+```
+
+
+```{r}
+# Create data frame with validation observation and prediction
+test = data.frame(log(facebookProcessedValidation$LifetimePostConsumers),output$fit, 1:length(output$fit));
+colnames(test)[1] = "LifetimePostConsumers"
+colnames(test)[2] = "Prediction"
+colnames(test)[3] = "Index"
+
+# Plot GroundCO vs Prediction for Validation Data Set 
+ggplot(data = test, aes(x = LifetimePostConsumers, y = Prediction)) + geom_point() + 
+  geom_abline(intercept = 0, slope = 1) +
+  ggtitle("Validation LifetimePostConsumers vs Prediction")
+```
+
+```{r}
+# Further comparisons
+ggplot(data = test, aes(x = Index)) +
+  geom_line(aes(y = LifetimePostConsumers, color = "lifetimePostConsumers")) + 
+  geom_line(aes(y = Prediction, color="Prediction"), linetype="twodash") +  
+  scale_color_manual(name = element_blank(), labels = c("GroundCO","Prediction"),
+                     values = c("darkred", "steelblue")) + labs(y = "") + 
+  ggtitle("Validation")
+```
 
 
 ## For report 3
