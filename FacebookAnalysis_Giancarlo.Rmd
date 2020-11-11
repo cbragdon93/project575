@@ -1,6 +1,8 @@
 ---
 title: "R Notebook"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
 ---
 ```{r}
 library(ggplot2)
@@ -57,7 +59,7 @@ facebook <-read.csv("data/facebook/dataset_Facebook.csv", sep=";")
 # remove the periods from names because ggplot will try to look for those
 # names as variables
 names(facebook)<-gsub("\\.","",names(facebook))
-print(names(facebook))
+#print(names(facebook))
 
 
 Response <- c("LifetimePostConsumers")
@@ -67,7 +69,10 @@ facebookProcessed <- facebook[,c(Response, Features)]
 # if the paid value is na, just make it 0
 facebookProcessed$Paid[which(is.na(facebookProcessed$Paid))] <- 0
 
-
+# Setting Dummy variables
+myCategories <- facebookProcessed$Category
+facebookProcessed$dummyCategory <- replace(myCategories, myCategories %in% c(1,2), 1)
+facebookProcessed$dummyCategory[which(myCategories==3)] <- 0
 print(names(facebookProcessed))
 
 ```
@@ -77,10 +82,18 @@ TypeNumeric <- as.numeric( factor(facebookProcessed$Type) ) -1
 facebookProcessed$Type <- TypeNumeric
 print(facebookProcessed)
 ```
+
+## Exploration
+
 ```{r}
 facebookPairs <- ggpairs(facebookProcessed, progress=F,
         lower = list(continuous = wrap("points", alpha = 0.3, size=0.1)))
 print(facebookPairs)
+```
+```{r}
+ggplot() +
+  geom_point(data=facebookProcessed, aes(x=Pagetotallikes, y=log(LifetimePostConsumers))) +
+  theme_bw()
 ```
 
 
@@ -130,21 +143,27 @@ print(
 )
 ```
 
+
+## Modeling
+
 ```{r}
+# seeding
+set.seed(123)
+
 numFacebook = nrow(facebookProcessed)
 facebookProcessed = facebookProcessed[sample(numFacebook),]
 splitTraining = 0.5
-trainingRows = ceiling(0.5*numFacebook)
-splitValidation = 0.25
-validationRows = trainingRows + ceiling(0.25*numFacebook)
-splitTesting = 0.25
+trainingRows = ceiling(splitTraining*numFacebook)
+splitValidation = 0.5
+validationRows = trainingRows + ceiling(splitValidation*numFacebook)
+splitTesting = 0.0
 assertthat::are_equal(splitTraining + splitValidation+ splitTesting,1)
 # Form Training, Validation and Testing sets
 facebookProcessedTraining = facebookProcessed[1:trainingRows,]; # 50% for the data
 facebookProcessedValidation = facebookProcessed[(trainingRows+1):validationRows,]; # 25% for thpe data
 facebookProcessedTesting = facebookProcessed[(validationRows+1):numFacebook,]; # 25% for the data
 print(facebookProcessedTraining)
-consumerModel2 <- lm(log(LifetimePostConsumers) ~ Type+Pagetotallikes+PostMonth,data=facebookProcessedTraining)
+consumerModel2 <- lm(log(LifetimePostConsumers) ~ Type + PostMonth + Pagetotallikes, data=facebookProcessedTraining)
 consumerModel2Summary<-summary(consumerModel2)
 print(consumerModel2Summary)
 ```
@@ -168,18 +187,82 @@ mean((ResMLSValidation)^2)
 ```
 
 
+
+## Diagnostics
+
+### Residuals
+
+```{r}
+# Diagnostics -------------------------------------------------------------------------------------
+# Standard Residuals vs GroundCO
+StanResMLS <- rstandard(consumerModel2)
+dataMLS <- data.frame(log(facebookProcessedTraining$LifetimePostConsumers),StanResMLS)
+names(dataMLS) <- c("LifetimePostConsumers","StanResMLS")
+
+ggplot() + 
+  geom_point(data=dataMLS, aes(x=(LifetimePostConsumers), y=(StanResMLS), color = "MLS"), size = 1) +
+  geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') +
+  scale_color_manual(name = element_blank(), labels = c("MLS"), values = c("blue")) +
+  labs(y = "Standarized Residual") + ggtitle("Standarized Residuals MLS Plot") 
+```
+
+```{r}
+# Standarized Residuals vs Fitted
+Fitted = fitted(consumerModel2)
+dataMLSFitted <- data.frame(Fitted,StanResMLS)
+
+# MLS Stan. Res. vs Fitted plot 
+ggplot() +
+  geom_point(data=dataMLSFitted, aes(x=Fitted, y=StanResMLS, color = "MLS"), size = 1) +
+  geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') +
+  scale_color_manual(name = element_blank(), labels = c("MLS"), values = c("blue")) +
+  labs(y = "Standarized Residual") + labs(x = "Fitted value") + 
+  ggtitle("Standarized Residuals MLS Plot (Fitted) ")
+```
+
+```{r}
+# Histogram of MLS
+ggplot(data = data.frame(StanResMLS), aes(x = StanResMLS)) + geom_histogram(bins = 30) +
+  ggtitle("Histogram MLS Plot")
+```
+
+
+### QQ plot
+
+```{r}
+# Test of Normality for Standarized Residuals of MLS
+p <- ggplot(data.frame(StanResMLS), aes(sample = StanResMLS)) +
+  ggtitle("QQ MLS Plot")
+p + stat_qq() + stat_qq_line()
+```
+
+## Validation
+
 ```{r}
 # Create data frame with validation observation and prediction
 test = data.frame(log(facebookProcessedValidation$LifetimePostConsumers),output$fit, 1:length(output$fit));
-colnames(test)[1] = "LifetimePostConsumers"
-colnames(test)[2] = "Prediction"
+colnames(test)[1] = "log_LifetimePostConsumers"
+colnames(test)[2] = "log_Prediction"
 colnames(test)[3] = "Index"
 # Plot GroundCO vs Prediction for Validation Data Set 
-ggplot(data = test, aes(x = LifetimePostConsumers, y = Prediction)) + geom_point() + 
+ggplot(data = test, aes(x = exp(log_LifetimePostConsumers), y = exp(log_Prediction))) + geom_point() + 
   geom_abline(intercept = 0, slope = 1) +
-  ggtitle("Validation LifetimePostConsumers vs Prediction")
+  ggtitle("Validation LifetimePostConsumers vs Prediction") +
+  xlab("LifetimePostConsumers") +
+  ylab("Prediction")
 ```
 
+```{r}
+# Further comparisons
+ggplot(data = test, aes(x = Index)) +
+  geom_line(aes(y = exp(log_LifetimePostConsumers), color = "lifetimePostConsumers")) + 
+  geom_line(aes(y = exp(log_Prediction), color="Prediction"), linetype="twodash") +  
+  scale_color_manual(name = element_blank(), labels = c("LifetimePostConsumers","Prediction"),
+                     values = c("darkred", "steelblue")) + labs(y = "") + 
+  ggtitle("Validation")
+```
+
+## End
 
 
 ```{r}
