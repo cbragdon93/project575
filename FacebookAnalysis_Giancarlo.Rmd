@@ -1,0 +1,238 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(ggplot2)
+library(multcomp)
+library(tidyverse)
+library(broom)
+library(tidyverse)
+library(gridExtra)
+library(chron)
+library(kableExtra)
+library(stringr)
+library(GGally)
+library(fable)
+library(forecast)
+```
+
+## Functions
+```{r}
+plotResiduals <- function(mlsModel, data, A, B){
+  StanResMLS <- rstandard(mlsModel)
+  X=A
+  Y=B
+  dataMLS <- data.frame(X=data[[A]],Y=data[[B]])
+  resVSomething<-ggplot() + 
+    geom_point(data=dataMLS, aes(x=X, y=Y, color = "blue"), size = 1) +
+    geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') + labs(y = "Standarized Residual") + ggtitle("Standarized Residuals MLS Plot")
+  print(resVSomething)
+  
+  
+Fitted = fitted(mlsModel)
+dataMLSFitted <- data.frame(Fitted,StanResMLS)
+
+# MLS Stan. Res. vs Fitted plot 
+mlsStanFit<-ggplot() +
+  geom_point(data=dataMLSFitted, aes(x=Fitted, y=StanResMLS, color = "MLS"), size = 1) +
+  geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') +
+  scale_color_manual(name = element_blank(), labels = c("MLS"), values = c("blue")) +
+  labs(y = "Standarized Residual") + labs(x = "Fitted value") + 
+  ggtitle("Standarized Residuals MLS Plot (Fitted) ")
+  print(mlsStanFit)
+  
+ }
+```
+
+## Facebook Data Loading and Pre-Processing
+
+```{r}
+facebook <-read.csv("data/facebook/dataset_Facebook.csv", sep=";")
+# Response variable will be Lifetime Post Consumers
+# input features are 
+#   category, page total likes,
+#   type, month, hour, weekday, paid. 
+###
+# remove the periods from names because ggplot will try to look for those
+# names as variables
+names(facebook)<-gsub("\\.","",names(facebook))
+print(names(facebook))
+
+
+Response <- c("LifetimePostConsumers")
+Features <- c("Category", "Pagetotallikes", "Type", "PostMonth", "PostHour", "PostWeekday", "Paid")
+
+facebookProcessed <- facebook[,c(Response, Features)]
+# if the paid value is na, just make it 0
+facebookProcessed$Paid[which(is.na(facebookProcessed$Paid))] <- 0
+
+
+print(names(facebookProcessed))
+
+```
+
+```{r}
+TypeNumeric <- as.numeric( factor(facebookProcessed$Type) ) -1
+facebookProcessed$Type <- TypeNumeric
+print(facebookProcessed)
+```
+```{r}
+facebookPairs <- ggpairs(facebookProcessed, progress=F,
+        lower = list(continuous = wrap("points", alpha = 0.3, size=0.1)))
+print(facebookPairs)
+```
+
+
+```{r}
+
+# Generating Most Interesting Plots From Scatter Plot Matrix with Respect and highlighting categories
+#See if there are any trends with Types/Category
+print(
+  ggplot()+
+    geom_point(data=facebookProcessed, aes(x=PostHour, y=LifetimePostConsumers,color=as.factor(Type)))+
+    labs(title = "Title", x = "Post Hour", y = "Page Total Likes", color = "Type\n")+
+    scale_color_hue(labels=c("Links","Photo","Status","Video"))+
+    theme_bw()+
+    theme(legend.background = element_rect(fill="lightblue", size=0.5, linetype="solid", colour ="black"))
+)
+print(
+  ggplot()+
+    geom_point(data=facebookProcessed, aes(x=PostMonth, y=Pagetotallikes,color=as.factor(Type)))+
+    labs(title = "Title", x = "Post Hour", y = "Page Total Likes", color = "Type\n")+
+    scale_color_hue(labels=c("Links","Photo","Status","Video"))+
+    theme_bw()+
+    theme(legend.background = element_rect(fill="lightblue", size=0.5, linetype="solid", colour ="black"))
+)
+print(
+  ggplot()+
+    geom_point(data=facebookProcessed, aes(x=PostMonth, y=LifetimePostConsumers,color=as.factor(Paid)))+
+    labs(title = "Title", x = "Post Hour", y = "Page Total Likes", color = "Paid\n")+
+    scale_color_hue(labels=c("Paid","Not Paid"))+
+    theme_bw()+
+    theme(legend.background = element_rect(fill="lightblue", size=0.5, linetype="solid", colour ="black"))
+)
+print(
+  ggplot()+
+    geom_point(data=facebookProcessed, aes(x=PostMonth, y=Pagetotallikes,color=as.factor(Paid)))+
+    labs(title = "Title", x = "Post Hour", y = "Page Total Likes", color = "Paid\n")+
+    scale_color_hue(labels=c("Paid","Not Paid"))+
+    theme_bw()+
+    theme(legend.background = element_rect(fill="lightblue", size=0.5, linetype="solid", colour ="black"))
+)
+print(
+  ggplot()+
+    geom_point(data=facebookProcessed, aes(x=PostHour, y=Pagetotallikes,color=as.factor(Type)))+
+    labs(title = "Title", x = "Post Hour", y = "Page Total Likes", color = "Type\n")+
+    scale_color_hue(labels=c("Links","Photo","Status","Video"))+
+    theme_bw()+
+    theme(legend.background = element_rect(fill="lightblue", size=0.5, linetype="solid", colour ="black"))
+)
+```
+
+```{r}
+numFacebook = nrow(facebookProcessed)
+facebookProcessed = facebookProcessed[sample(numFacebook),]
+splitTraining = 0.5
+trainingRows = ceiling(0.5*numFacebook)
+splitValidation = 0.25
+validationRows = trainingRows + ceiling(0.25*numFacebook)
+splitTesting = 0.25
+assertthat::are_equal(splitTraining + splitValidation+ splitTesting,1)
+# Form Training, Validation and Testing sets
+facebookProcessedTraining = facebookProcessed[1:trainingRows,]; # 50% for the data
+facebookProcessedValidation = facebookProcessed[(trainingRows+1):validationRows,]; # 25% for thpe data
+facebookProcessedTesting = facebookProcessed[(validationRows+1):numFacebook,]; # 25% for the data
+print(facebookProcessedTraining)
+consumerModel2 <- lm(log(LifetimePostConsumers) ~ Type+Pagetotallikes+PostMonth,data=facebookProcessedTraining)
+consumerModel2Summary<-summary(consumerModel2)
+print(consumerModel2Summary)
+```
+```{r}
+# Validation --------------------------------------------------------------------------------------
+# Residuals for training data
+ResMLS <- resid(consumerModel2)
+# Residuals for validation data
+output<-predict(consumerModel2, se.fit = TRUE, newdata=facebookProcessedValidation)
+ResMLSValidation <- log(facebookProcessedValidation$LifetimePostConsumers) - output$fit
+```
+
+```{r}
+# Mean Square Error for training data
+mean((ResMLS)^2)
+```
+
+```{r}
+# Mean Square Error for validation data
+mean((ResMLSValidation)^2)
+```
+
+
+```{r}
+# Create data frame with validation observation and prediction
+test = data.frame(log(facebookProcessedValidation$LifetimePostConsumers),output$fit, 1:length(output$fit));
+colnames(test)[1] = "LifetimePostConsumers"
+colnames(test)[2] = "Prediction"
+colnames(test)[3] = "Index"
+# Plot GroundCO vs Prediction for Validation Data Set 
+ggplot(data = test, aes(x = LifetimePostConsumers, y = Prediction)) + geom_point() + 
+  geom_abline(intercept = 0, slope = 1) +
+  ggtitle("Validation LifetimePostConsumers vs Prediction")
+```
+
+
+
+```{r}
+#Julio's Suggestion of Making new Categories: Photo/Non Photo
+countLink <- length(which(facebookProcessed$Type == 0))
+countPhoto <- length(which(facebookProcessed$Type == 1))
+countStatus <- length(which(facebookProcessed$Type == 2))
+countVideo <- length(which(facebookProcessed$Type == 3))
+countNonPhoto <- c(countStatus+countVideo+countLink)
+countPaid<- length(which(facebookProcessed$Paid == 0))
+countNonPaid<- length(which(facebookProcessed$Paid == 1))
+paste(c("Photo Posts", countPhoto), collapse=" ")
+paste(c("Non Photo Posts", countNonPhoto), collapse=" ")
+paste(c("Paid Posts", countPaid), collapse=" ")
+paste(c("Non Paid Posts", countNonPaid), collapse=" ")
+```
+
+
+```{r}
+#Change Type  to Photo and Non Photo
+newType <- replace(facebookProcessed$Type, facebookProcessed$Type>0, 1)
+facebookProcessed$Type <- newType
+
+print(
+  ggplot()+
+    geom_point(data=facebookProcessed, aes(x=PostMonth, y=Pagetotallikes,color=as.factor(Type)))+
+    labs(title = "Title", x = "PostMonth", y = "Page Total Likes", color = "Type\n")+
+    scale_color_hue(labels=c("Photo","Non-Photo"))+
+    theme_bw()+
+    theme(legend.background = element_rect(fill="lightblue", size=0.5, linetype="solid", colour ="black"))
+)
+```
+
+
+```{r}
+numFacebook = nrow(facebookProcessed)
+facebookProcessed = facebookProcessed[sample(numFacebook),]
+splitTraining = 0.5
+trainingRows = ceiling(0.5*numFacebook)
+splitValidation = 0.25
+validationRows = trainingRows + ceiling(0.25*numFacebook)
+splitTesting = 0.25
+assertthat::are_equal(splitTraining + splitValidation+ splitTesting,1)
+# Form Training, Validation and Testing sets
+facebookProcessedTraining = facebookProcessed[1:trainingRows,]; # 50% for the data
+facebookProcessedValidation = facebookProcessed[(trainingRows+1):validationRows,]; # 25% for the data
+facebookProcessedTesting = facebookProcessed[(validationRows+1):numFacebook,]; # 25% for the data
+print(facebookProcessedTraining)
+consumerModel3 <- lm(log(LifetimePostConsumers) ~ Type+Pagetotallikes+PostMonth,data=facebookProcessedTraining)
+consumerModel3Summary<-summary(consumerModel3)
+print(consumerModel3Summary)
+```
+
+
+
+
