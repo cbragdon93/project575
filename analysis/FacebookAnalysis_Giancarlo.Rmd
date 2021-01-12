@@ -1,5 +1,6 @@
 ---
 title: "R Notebook"
+author: "Giancarlo Sirio, Callen Bragdon"
 output:
   html_document:
     df_print: paged
