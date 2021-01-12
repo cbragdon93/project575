@@ -100,19 +100,29 @@ facebookProcessed$Paid[which(is.na(facebookProcessed$Paid))] <- 0
 ```
 
 ```{r}
-# Randomize rows
-numFacebook = nrow(facebookProcessed)
-facebookProcessed = facebookProcessed[sample(numFacebook),]
-splitTraining = 0.5
-trainingRows = ceiling(0.5*numFacebook)
-splitValidation = 0.25
-validationRows = trainingRows + ceiling(0.25*numFacebook)
-splitTesting = 0.25
-assertthat::are_equal(splitTraining + splitValidation+ splitTesting,1)
-# Form Training, Validation and Testing sets
-facebookProcessedTraining = facebookProcessed[1:trainingRows,]; # 50% for the data
-facebookProcessedValidation = facebookProcessed[(trainingRows+1):validationRows,]; # 25% for the data
-facebookProcessedTesting = facebookProcessed[(validationRows+1):numFacebook,]; # 25% for the data
+shuffleData <- function(myData, 
+                        trainingProp=0.5, validationProp=0.5, testingProp=0.0){
+  # Randomize rows
+  myData.numrows = nrow(myData)
+  myData = myData[sample(myData.numrows),]
+  splitTraining = trainingProp
+  trainingRows = ceiling(0.5*myData.numrows)
+  splitValidation = validationProp
+  validationRows = trainingRows + ceiling(0.25*myData.numrows)
+  splitTesting = testingProp
+  assertthat::are_equal(splitTraining + splitValidation+ splitTesting,1)
+  # Form Training, Validation and Testing sets
+  myDataTraining = myData[1:trainingRows,]; # 50% for the data
+  myDataValidation = myData[(trainingRows+1):validationRows,]; # 25% for the data
+  myDataTesting = myData[(validationRows+1):myData.numrows,]; # 25% for the data
+  return(
+    list(
+      "Training"=myDataTraining,
+      "Validation"=myDataValidation,
+      "Testing"=myDataTesting
+    )
+  )
+}
 
 ```
 

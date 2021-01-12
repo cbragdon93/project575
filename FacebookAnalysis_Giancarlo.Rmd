@@ -91,6 +91,8 @@ facebookPairs <- ggpairs(facebookProcessed, progress=F,
 print(facebookPairs)
 ```
 ```{r}
+# just a scatter plot of log lifetime post consumers v. pagetotallikes
+# not for final deliverable
 ggplot() +
   geom_point(data=facebookProcessed, aes(x=Pagetotallikes, y=log(LifetimePostConsumers))) +
   theme_bw()
@@ -101,6 +103,14 @@ ggplot() +
 
 # Generating Most Interesting Plots From Scatter Plot Matrix with Respect and highlighting categories
 #See if there are any trends with Types/Category
+print(
+  ggplot()+
+    geom_point(data=facebookProcessed, aes(x=PostMonth, y=log(LifetimePostConsumers),color=as.factor(Type)))+
+    labs(title = "Post Consumers V. Post Month by Type", x = "Post Month", y = "LifeTime Post Consumers", color = "Type\n")+
+    scale_color_hue(labels=c("Links","Photo","Status","Video"))+
+    theme_bw()+
+    theme(legend.background = element_rect(fill="lightblue", size=0.5, linetype="solid", colour ="black"))
+)
 print(
   ggplot()+
     geom_point(data=facebookProcessed, aes(x=PostHour, y=LifetimePostConsumers,color=as.factor(Type)))+
@@ -147,26 +157,35 @@ print(
 ## Modeling
 
 ```{r}
-# seeding
-set.seed(123)
-
+# seeding for reproducible results
+set.seed(42069)
+# create training and validation sets
+# it's a 50/50 split between Training and Validation
 numFacebook = nrow(facebookProcessed)
+# Shuffle the data before splitting
 facebookProcessed = facebookProcessed[sample(numFacebook),]
+# find out generically the index range for each data split
 splitTraining = 0.5
 trainingRows = ceiling(splitTraining*numFacebook)
 splitValidation = 0.5
 validationRows = trainingRows + ceiling(splitValidation*numFacebook)
 splitTesting = 0.0
+# makes sure the sum of your split fractions adds up to 1
 assertthat::are_equal(splitTraining + splitValidation+ splitTesting,1)
 # Form Training, Validation and Testing sets
 facebookProcessedTraining = facebookProcessed[1:trainingRows,]; # 50% for the data
 facebookProcessedValidation = facebookProcessed[(trainingRows+1):validationRows,]; # 25% for thpe data
 facebookProcessedTesting = facebookProcessed[(validationRows+1):numFacebook,]; # 25% for the data
 print(facebookProcessedTraining)
-consumerModel2 <- lm(log(LifetimePostConsumers) ~ Type + PostMonth + Pagetotallikes, data=facebookProcessedTraining)
+```
+
+```{r}
+# model
+consumerModel2 <- lm(log(LifetimePostConsumers) ~ (dummyCategory + PostMonth * Pagetotallikes), data=facebookProcessedTraining)
 consumerModel2Summary<-summary(consumerModel2)
 print(consumerModel2Summary)
 ```
+
 ```{r}
 # Validation --------------------------------------------------------------------------------------
 # Residuals for training data
@@ -194,7 +213,7 @@ mean((ResMLSValidation)^2)
 
 ```{r}
 # Diagnostics -------------------------------------------------------------------------------------
-# Standard Residuals vs GroundCO
+# Standard Residuals vs log LifetimePostConsumers
 StanResMLS <- rstandard(consumerModel2)
 dataMLS <- data.frame(log(facebookProcessedTraining$LifetimePostConsumers),StanResMLS)
 names(dataMLS) <- c("LifetimePostConsumers","StanResMLS")
@@ -203,7 +222,7 @@ ggplot() +
   geom_point(data=dataMLS, aes(x=(LifetimePostConsumers), y=(StanResMLS), color = "MLS"), size = 1) +
   geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') +
   scale_color_manual(name = element_blank(), labels = c("MLS"), values = c("blue")) +
-  labs(y = "Standarized Residual") + ggtitle("Standarized Residuals MLS Plot") 
+  labs(x = "log(LifetimePostConsumers)" ,y = "Standarized Residual") + ggtitle("Standarized Residuals MLS Plot") 
 ```
 
 ```{r}
@@ -213,6 +232,7 @@ dataMLSFitted <- data.frame(Fitted,StanResMLS)
 
 # MLS Stan. Res. vs Fitted plot 
 ggplot() +
+  
   geom_point(data=dataMLSFitted, aes(x=Fitted, y=StanResMLS, color = "MLS"), size = 1) +
   geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') +
   scale_color_manual(name = element_blank(), labels = c("MLS"), values = c("blue")) +
@@ -234,6 +254,7 @@ ggplot(data = data.frame(StanResMLS), aes(x = StanResMLS)) + geom_histogram(bins
 p <- ggplot(data.frame(StanResMLS), aes(sample = StanResMLS)) +
   ggtitle("QQ MLS Plot")
 p + stat_qq() + stat_qq_line()
+# not normal as you'll see from qq plot
 ```
 
 ## Validation
