@@ -1,0 +1,402 @@
+---
+title: "Facebook_Analysis"
+author: "Team3"
+date: "9/25/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(ggplot2)
+library(ggfortify)
+library(glmnet)
+library(multcomp)
+library(tidyverse)
+library(broom)
+library(tidyverse)
+library(gridExtra)
+library(chron)
+library(kableExtra)
+library(stringr)
+library(GGally)
+# The package I normally use for time series, TSA, got discontinued
+# from the CRAN repo. Rather than dealing with archives
+# and possible versioning issues, I'm currently using a set of libraries that
+# do the same thing
+library(fable)
+library(forecast)
+```
+
+## Functions
+```{r}
+plotResiduals <- function(mlsModel, data, A, B){
+  StanResMLS <- rstandard(mlsModel)
+  X=A
+  Y=B
+  dataMLS <- data.frame(X=data[[A]],Y=data[[B]])
+  resVSomething<-ggplot() + 
+    geom_point(data=dataMLS, aes(x=X, y=Y, color = "blue"), size = 1) +
+    geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') + labs(y = "Standarized Residual") + ggtitle("Standarized Residuals MLS Plot")
+  print(resVSomething)
+  
+  
+Fitted = fitted(mlsModel)
+dataMLSFitted <- data.frame(Fitted,StanResMLS)
+
+# MLS Stan. Res. vs Fitted plot 
+mlsStanFit<-ggplot() +
+  geom_point(data=dataMLSFitted, aes(x=Fitted, y=StanResMLS, color = "MLS"), size = 1) +
+  geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') +
+  scale_color_manual(name = element_blank(), labels = c("MLS"), values = c("blue")) +
+  labs(y = "Standarized Residual") + labs(x = "Fitted value") + 
+  ggtitle("Standarized Residuals MLS Plot (Fitted) ")
+  print(mlsStanFit)
+  
+ }
+```
+
+## Facebook Data Loading and Pre-Processing
+
+```{r}
+facebook<-read.csv("data/facebook/dataset_Facebook.csv", sep=";")
+# Response variable will be Lifetime Post Consumers
+# input features are 
+#   category, page total likes,
+#   type, month, hour, weekday, paid. 
+###
+# remove the periods from names because ggplot will try to look for those
+# names as variables
+#
+# Lots of renaming for neater formatting later...
+# LPTR is Lifetime Post Total Reach
+# LEU is Lifetime Engaged Users
+# LPC is Lifetime Post Consumers
+# LPTI is Lifetime Post Total Impressions
+# LPIPLP is Lifetime Post Impressions by People who Liked your Page
+# LPRPLP is Lifetime Post Reach by People who Liked your Page
+# PTL is Page Total Likes
+names(facebook)<-gsub("\\.","",names(facebook))
+names(facebook)[which(names(facebook)=="LifetimePostTotalReach")] <- "LPTR"
+names(facebook)[names(facebook)=="LifetimeEngagedUsers"] <- "LEU"
+names(facebook)[names(facebook)=="LifetimePostConsumers"] <- "LPC"
+names(facebook)[names(facebook)=="LifetimePostTotalImpressions"] <- "LPTI"
+names(facebook)[names(facebook)=="LifetimePostImpressionsbypeoplewhohavelikedyourPage"] <- "LPIPLP"
+names(facebook)[names(facebook)=="LifetimePostreachbypeoplewhohavelikedyourPage"] <- "LPRPLP"
+names(facebook)[names(facebook)=="Pagetotallikes"] <- "PTL"
+names(facebook)[names(facebook)=="PostHour"] <- "Hour"
+names(facebook)[names(facebook)=="PostMonth"] <- "Month"
+names(facebook)[names(facebook)=="PostWeekday"] <- "Weekday"
+print("New names of dataset")
+print(names(facebook))
+Response <- c("LPC")
+Features <- c("Category", "PTL", "Type", "Month", "Hour", "Weekday", "Paid")
+facebookProcessed <- facebook[,c(Response, Features)]
+# if the paid value is na, just make it 0
+facebookProcessed$Paid[which(is.na(facebookProcessed$Paid))] <- 0
+```
+
+```{r}
+shuffleData <- function(myData, 
+                        trainingProp=0.5, validationProp=0.5, testingProp=0.0){
+  # Randomize rows
+  myData.numrows = nrow(myData)
+  myData = myData[sample(myData.numrows),]
+  splitTraining = trainingProp
+  trainingRows = ceiling(0.5*myData.numrows)
+  splitValidation = validationProp
+  validationRows = trainingRows + ceiling(0.25*myData.numrows)
+  splitTesting = testingProp
+  assertthat::are_equal(splitTraining + splitValidation+ splitTesting,1)
+  # Form Training, Validation and Testing sets
+  myDataTraining = myData[1:trainingRows,]; # 50% for the data
+  myDataValidation = myData[(trainingRows+1):validationRows,]; # 25% for the data
+  myDataTesting = myData[(validationRows+1):myData.numrows,]; # 25% for the data
+  return(
+    list(
+      "Training"=myDataTraining,
+      "Validation"=myDataValidation,
+      "Testing"=myDataTesting
+    )
+  )
+}
+
+```
+
+
+
+```{r}
+facebookPairs <- ggpairs(facebookProcessed, progress=F,
+        lower = list(continuous = wrap("points", alpha = 0.3,    size=0.1)))
+print(facebookPairs)
+```
+
+
+## Lasso
+
+```{r}
+par(mfrow=c(1,1))
+# Apply Lasso to training set
+x <- model.matrix(log(LPC)~., facebookProcessedTraining) %>% as.data.frame()
+# Add more variables to look at for the model here.
+x$`sin(Month)*TypePhoto` <- sin(x[,'Month'])*x[,'TypePhoto']
+x$`sin(Month)*TypeStatus` <- sin(x[,'Month'])*x[,'TypeStatus']
+x$`sin(Month)*TypeVideo` <- sin(x[,'Month'])*x[,'TypeVideo']
+# Response variable isolated for glmnet call
+y <- log(facebookProcessedTraining$LPC)
+fit <- glmnet::glmnet(as.matrix(x), y, alpha = 1)
+```
+
+### Lasso Plot
+
+```{r}
+pallete = c('black', 'red', 'blue', 'green', 
+            'orange','pink','magenta','cyan',
+            'yellow','#FF00FF', "#00FF00", "#CECECE", "#CE99CE")
+p <- autoplot(fit, ylim = c(-0.5,0.5)) +
+  scale_color_manual(values=pallete) +
+  ggtitle("Lasso for Variable Selection against Log(LPC)")
+# I'm not going to annotate each line manually and
+# then have a legend...
+print(p)
+```
+
+## LM Call
+
+```{r}
+consumerModel <- lm(log(LPC) ~ (sin(Month))*Type + PTL, 
+                    data=facebookProcessedTraining)
+consumerModelSummary<-summary(consumerModel)
+print(consumerModelSummary)
+```
+
+## Validation
+
+```{r}
+# Validation --------------------------------------------------------------------------------------
+
+# Residuals for training data
+ResMLS <- resid(consumerModel)
+
+# Residuals for validation data
+output<-predict(consumerModel, se.fit = TRUE, newdata=facebookProcessedValidation)
+ResMLSValidation <- log(facebookProcessedValidation$LPC) - output$fit
+```
+
+
+```{r}
+# Diagnostics -------------------------------------------------------------------------------------
+# should probably make a function for this...
+StanResMLS <- rstandard(consumerModel)
+dataMLS <- data.frame(log(facebookProcessedTraining$LPC),StanResMLS)
+names(dataMLS) <- c("LPC","StanResMLS")
+
+ggplot() + 
+  geom_point(data=dataMLS, aes(x=exp(LPC), y=exp(StanResMLS), color = "MLS"), size = 1) +
+  geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') +
+  scale_color_manual(name = element_blank(), labels = c("MLS"), values = c("blue")) +
+  labs(y = "Standarized Residual", x="LPC") + ggtitle("Standarized Residuals MLS Plot, Training Set") 
+
+
+
+dataMLSValidation <- data.frame(log(facebookProcessedValidation$LPC),ResMLSValidation)
+names(dataMLSValidation) <- c("LPC","MLSValidation")
+
+ggplot() + 
+  geom_point(data=dataMLSValidation, aes(x=exp(LPC), y=exp(MLSValidation), color = "MLS"), size = 1) +
+  geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') +
+  scale_color_manual(name = element_blank(), labels = c("MLS"), values = c("blue")) +
+  labs(y = "Standarized Residual", x="LPC") + ggtitle("Standarized Residuals MLS Plot, Validation Set") 
+
+```
+
+
+```{r}
+# Test of Normality for Standarized Residuals of MLS
+p <- ggplot(data.frame(StanResMLS), aes(sample = StanResMLS)) +
+  ggtitle("QQ MLS Plot on Training Set")
+p + stat_qq() + stat_qq_line()
+# Test of Normality for Standarized Residuals of MLS in Validation Set
+p <- ggplot(data.frame(ResMLSValidation), aes(sample = ResMLSValidation)) +
+  ggtitle("QQ MLS Plot on Validation Set")
+p + stat_qq() + stat_qq_line()
+```
+
+```{r}
+# Standarized Residuals vs Fitted
+Fitted = fitted(consumerModel)
+dataMLSFitted <- data.frame(Fitted,StanResMLS)
+
+# MLS Stan. Res. vs Fitted plot 
+ggplot() +
+  geom_point(data=dataMLSFitted, aes(x=Fitted, y=StanResMLS, color = "MLS"), size = 1) +
+  geom_hline(yintercept=2,color='blue') + geom_hline(yintercept=-2, color='blue') +
+  scale_color_manual(name = element_blank(), labels = c("MLS"), values = c("blue")) +
+  labs(y = "Standarized Residual") + labs(x = "Fitted value") + 
+  ggtitle("Standarized Residuals MLS Plot (Fitted) ")
+```
+
+
+```{r}
+# Mean Square Error for training data
+mean((ResMLS)^2)
+```
+
+```{r}
+# Mean Square Error for validation data
+mean((ResMLSValidation)^2)
+```
+
+
+```{r}
+# Create data frame with validation observation and prediction
+test = data.frame(log(facebookProcessedValidation$LPC),output$fit, 1:length(output$fit));
+colnames(test)[1] = "log_LifetimePostConsumers"
+colnames(test)[2] = "log_Prediction"
+colnames(test)[3] = "Index"
+
+# Plot GroundCO vs Prediction for Validation Data Set 
+ggplot(data = test, aes(x = exp(log_LifetimePostConsumers), y = exp(log_Prediction))) + geom_point() + 
+  geom_abline(intercept = 0, slope = 1) +
+  ggtitle("Validation LifetimePostConsumers vs Prediction") +
+  xlab("LifetimePostConsumers") +
+  ylab("Prediction")
+```
+
+```{r}
+# Further comparisons
+ggplot(data = test, aes(x = Index)) +
+  geom_line(aes(y = exp(log_LifetimePostConsumers), color = "lifetimePostConsumers")) + 
+  geom_line(aes(y = exp(log_Prediction), color="Prediction"), linetype="twodash") +  
+  scale_color_manual(name = element_blank(), labels = c("LifetimePostConsumers","Prediction"),
+                     values = c("darkred", "steelblue")) + labs(y = "") + 
+  ggtitle("Validation")
+```
+
+
+## For report 3
+
+```{r}
+p<-ggplot(facebook) + 
+  geom_point(data=facebook, aes(x=PostHour, y=like)) +
+  ggtitle("Likes V. Hour") +
+  xlab("Hour") +
+  ylab("# of Likes")
+
+likeModel <- lm(like ~ as.factor(Paid)*(sin(PostHour) + PostHour^2), data=facebook)
+s<-summary(likeModel)
+print(s)
+m=s$coefficients[1]
+predicted = predict(likeModel)
+p + 
+  geom_line(mapping = aes(x = facebook$PostHour, y = c(m,predicted,NA), color = "red"))
+  
+```
+
+```{r report_3_plotting}
+monthSeven <- facebook[ which(facebook$PostMonth==7) , ]
+
+categorical <- c("Category", "Paid", "Type")
+notCategorical<-names(facebook)[which(!(names(facebook) %in% categorical))]
+```
+
+```{r byCategory}
+print(
+  ggplot() + 
+  geom_point(data=facebook, 
+             aes(
+                 x=LifetimePostreachbypeoplewholikeyourPage, 
+                 y=LifetimePeoplewhohavelikedyourPageandengagedwithyourpost,
+                 color=as.factor(Category)))  +
+  theme_bw()
+)
+```
+
+
+
+```{r byType}
+print(
+  ggplot() + 
+  geom_point(data=facebook, 
+             aes(x=LifetimePostreachbypeoplewholikeyourPage, 
+                 y=LifetimePeoplewhohavelikedyourPageandengagedwithyourpost,
+                 color=as.factor(Type)))  +
+  theme_bw()
+)
+```
+
+
+```{r report_3_ggpairs}
+print(
+  ggpairs(facebook[,which(startsWith(names(monthSeven),"Lifetime") | names(monthSeven)=="Pagetotallikes" | names(monthSeven)=="PostMonth")], progress=F,
+        lower = list(continuous = wrap("points", alpha = 0.3,    size=0.1)))
+)
+```
+
+
+
+```{r report_3_mls}
+# MLR
+our.mls <- lm( LifetimePostConsumptions ~ (PostMonth + LifetimeEngagedUsers + LifetimePostreachbypeoplewholikeyourPage),
+               data=facebook )
+summary(our.mls)
+
+```
+
+
+```{r}
+# Diagnostics -------------------------------------------------------------------------------------
+## why are the horizontal lines for the residual plots where they are?
+## can we set our own threshold here?
+plotResiduals(our.mls, facebook, "PostHour", "TotalInteractions")
+```
+
+```{r}
+length(facebook$Pagetotallikes)
+```
+
+### By hour of each day, simple OLM
+```{r}
+# ggplot doesn't like having the periods in the x,y aesthetic
+# I think ggplot tries to find an object Post.Hour...
+colnames(facebook)[which(colnames(facebook)=="Post.Hour")]<-"PostHour"
+colnames(facebook)[which(colnames(facebook)=="Post.Weekday")]<-"PostWeekday"
+lapply(unique(facebook$PostWeekday), function(x){
+  # building simple linear models with R.
+  # Something we could ask of the facebook data could be
+  # "When is the best day to post? Best Hour? Best Day and hour?"
+  subsetData = facebook[which(facebook$PostWeekday==x),]
+  theseLikes = subsetData$like
+  isPaid = subsetData$Paid
+  theseHours = subsetData$PostHour
+  # extracting slopes, intercepts of model
+  # both for paid and unpaid. the result will be marked if significant
+  m1 = lm(theseLikes ~ as.factor(isPaid) + theseHours, data=subsetData)
+  print(summary(m1))
+  thisIntercept = m1$coefficients[[1]]
+  paidCoef = m1$coefficients[[2]]
+  h = m1$coefficients[[3]]
+  ggplot(subsetData, aes(x=PostHour, y=like, col=Paid)) +
+  geom_point() +
+  # fit the model
+  geom_abline(slope = h, intercept=(thisIntercept+paidCoef), color="blue") +
+    geom_abline(slope=h, intercept=thisIntercept, color="black") +
+  theme_bw() +
+  theme(axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
+  labs(title=paste0("Facebook Like Activity: PostDay #: ",x), 
+       x="post hour", y="likes", col="paid?")
+})
+```
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,167 @@
+---
+title: "Preliminary_Analysis"
+author: "Callen"
+date: "9/11/2020"
+output: 
+  html_document:
+    toc: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Libraries
+```{r}
+library(ggplot2)
+library(multcomp)
+library(tidyverse)
+library(broom)
+library(tidyverse)
+library(gridExtra)
+library(chron)
+# The package I normally use for time series, TSA, got discontinued
+# from the CRAN repo. Rather than dealing with archives
+# and possible versioning issues, I'm currently using a set of libraries that
+# do the same thing
+library(fable)
+library(forecast)
+```
+## Core Functions
+```{r}
+#
+```
+
+
+## Bike
+```{r}
+# Read in files
+bikeByDay <- read.csv("./data/bike/day.csv")
+bikeByDayAndHour <- read.csv("./data/bike/hour.csv")
+```
+
+### Basic Plots
+```{r}
+# just a time plot, regardless of other factors
+DayDate<-as.Date(bikeByDay$dteday)
+bikeByDayPlot<-ggplot(bikeByDay, aes(x=dteday, y=cnt)) +
+  geom_point() + theme_bw() + labs(title="Total Rentals By Day", y="Total", x="Day") + theme(axis.text.x=element_blank(), axis.ticks.x=element_blank())
+bikeByDayPlot
+```
+```{r}
+# just a time plot, marked by if it's a work day
+# need to change the type of the workingday column, integer
+# (meant as boolean) into factor
+bikeByDay$workingday<-as.factor(bikeByDay$workingday)
+ggplot(bikeByDay, aes(x=dteday, y=cnt, col=workingday)) +
+  geom_point() +
+  theme_bw() +
+  theme(axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
+  labs(title="Total Bike Rentals, marked by working day", 
+       x="Date", y="Total", col="Working Day?")
+```
+
+```{r}
+# Seasonal rental
+# could isolate the seasons and model those if you want? 
+# But seasonal structure wouldn't be bad to do forecasting on
+ggplot(bikeByDay, aes(x=dteday, y=cnt, col=season)) +
+  geom_point() +
+  theme_bw() +
+  theme(axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
+  labs(title="Total Bike Rentals, marked by season(only by day)", 
+       x="Date", y="Total", col="Season")
+```
+The main purpose of these graphs is to show the ways you can group your data 
+to plot in a relatively straightforward way.
+
+
+Now, there are time series-related models that I think will be discussed in class
+later on. We could use that information to not only create a stronger model, but
+to more easily predict future total usage, given the seasonal structure of
+the above plot.
+
+## Bike by Day and Hour
+```{r}
+# I wanted to show all of the data for each day and hour for a given
+# season; otherwise, showing all would be messy. To make that work
+# I made a concatenation of the date and the hour fields in the dataframe
+mySeason<-3
+myYear<-0
+bikeByDayAndHour$newTime <- chron(dates=as.character(bikeByDayAndHour$dteday), 
+                                  times=paste0(bikeByDayAndHour$hr,":00:00"),
+                                  format=c("y-m-d", "h:m:s"))
+ggplot(data=subset(bikeByDayAndHour[which(bikeByDayAndHour$season==mySeason),], yr==myYear), 
+       aes(x=newTime, y=cnt)) +
+  geom_line() +
+  labs(title=paste0("rentals by day and hour: Season: ",mySeason,", Year: ", myYear), 
+       x="Time(year-month-day hour:minutes:seconds)",
+       y="Total Rentals") +
+  scale_x_discrete() +
+  theme_bw()
+```
+
+
+
+## Forest
+```{r}
+forestData<-read.csv("data/forestFire/forestfires.csv")
+```
+
+
+## Facebook
+
+```{r}
+facebook<-read.csv("data/facebook/dataset_Facebook.csv", sep=";")
+```
+
+
+Here, I'll go  through code that implements a simplistic (Generalized) Linear model. The model
+will claim that, on each separate day, there's a linear dependence of likes on the time
+of day you post. The general question would regard when the best time+day to post
+something is.
+
+R users have a strong aversion to "for" loops, and use "apply" functions  and matrix operations instead.
+"For" loops are slower in R, with applies being faster, and matrix operations
+(i.e. vectorized code) being the fastest. 
+```{r}
+# ggplot doesn't like having the periods in the x,y aesthetic
+# I think ggplot tries to find an object Post.Hour...
+colnames(facebook)[which(colnames(facebook)=="Post.Hour")]<-"PostHour"
+colnames(facebook)[which(colnames(facebook)=="Post.Weekday")]<-"PostWeekday"
+lapply(unique(facebook$PostWeekday), function(x){
+  # building simple linear models with R.
+  # Something we could ask of the facebook data could be
+  # "When is the best day to post? Best Hour? Best Day and hour?"
+  subsetData = facebook[which(facebook$PostWeekday==x),]
+  theseLikes = subsetData$like
+  isPaid = subsetData$Paid
+  theseHours = subsetData$PostHour
+  # extracting slopes, intercepts of model
+  # both for paid and unpaid. the result will be marked if significant
+  m1 = glm(theseLikes ~ as.factor(isPaid) + theseHours, data=subsetData)
+  print(m1)
+  thisIntercept = m1$coefficients[[1]]
+  paidCoef = m1$coefficients[[2]]
+  h = m1$coefficients[[3]]
+  ggplot(subsetData, aes(x=PostHour, y=like, col=Paid)) +
+  geom_point() +
+  # fit the model
+  geom_abline(slope = h, intercept=(thisIntercept+paidCoef), color="blue") +
+    geom_abline(slope=h, intercept=thisIntercept, color="black") +
+  theme_bw() +
+  theme(axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
+  labs(title=paste0("Facebook Like Activity: PostDay #: ",x), 
+       x="post hour", y="likes", col="paid?")
+})
+```
+
+These models aren't necessarily good by any means, but are meant as a way to show how one can do this
+sort of thing in R, moreso with an automated mindset. Things we'd want to inspect
+to evaluate a model's performance is, for example, the model's AIC. AIC is
+used as a metric to compare two model; lower AIC relative to another's is the
+goal. However, AIC is used as a relative metric, so if you had a bunch of bad
+models, picking the lowest AIC isn't a surefire way standalone, but there are
+other methods that will probably be mentioned later in class.
+
