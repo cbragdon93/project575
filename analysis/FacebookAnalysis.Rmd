@@ -1,6 +1,6 @@
 ---
 title: "Facebook_Analysis"
-author: "Team3"
+author: "Callen Bragdon, Giancarlo Sirio"
 date: "9/25/2020"
 output: pdf_document
 ---
